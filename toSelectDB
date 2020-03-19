@@ -1,0 +1,50 @@
+public DataTable searchMgrRole(string loginEmpno, string empNo ,string empName, string roletype,string org)
+    {
+        string sqlStr = @"declare @roletype varchar(2)
+                          SELECT roletype,subCname, d.org_abbr_chnm2,  empno,com_cname as name,com_telext as tel,com_location as secno,case when com_depcd='N' then '在職' else '離職' end as state,subType
+                          from UserRole a left join Code b on a.roletype = b.subType left join common..comper c on a.empno = c.com_empno
+						  left join common..orgcod d on c.com_orgcd = d.org_orgcd
+                          where classType='UserType'";
+        if (!string.IsNullOrEmpty(loginEmpno))
+            sqlStr += " and roletype<=(select roletype from UserRole where empno='" + loginEmpno + @"')";
+
+        if (!string.IsNullOrEmpty(empNo))
+            sqlStr += " and (empno='" + empNo + "' or com_cname like '%" + empNo + "%') ";
+
+        if (!string.IsNullOrEmpty(roletype))
+            sqlStr += " and [roletype]='" + roletype + "'";
+            
+        if (!string.IsNullOrEmpty(org))
+            sqlStr += " and c.com_orgcd='" + org + "'";
+
+        sqlStr += " order by roletype,com_orgcd,empno";
+
+        return pDoDBAccess.toSelect(sqlStr);
+    }
+------------------------------------------------------------------------
+public DataTable toSelect(string sqlString)
+    {
+        ToSelect t = new ToSelect();
+        return t.process(sqlString);
+    }
+------------------------------------------------------------------------
+    public DataTable process(string sqlString)
+    {
+        SqlCommand sqlCmd = new SqlCommand(sqlString, common.ConnString);
+        sqlCmd.CommandType = CommandType.Text;
+        try
+        {
+            return common.runParaCmdDS(sqlCmd).Tables[0];
+        }
+        catch (Exception ex)
+        {
+            sqlCmd.Connection.Close();
+            sqlCmd.Connection.Dispose();
+            sqlCmd.Dispose();
+            throw new Exception("TM select錯誤訊息：" + ex.Message);
+        }
+        finally
+        {
+        }
+        throw new System.NotImplementedException();
+    }
