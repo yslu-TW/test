@@ -1,0 +1,324 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using MySql.Data;
+using MySql.Data.MySqlClient;
+using System.Data;
+using System.Data.OleDb;
+using System.IO;
+using System.Data.SqlClient;
+using System.Threading;
+
+namespace ChinaSteelDB
+{
+    class Program
+    {
+        static orc_model orc = new orc_model();
+        static void Main(string[] args)
+        {
+            while (1 == 1)
+            {
+                DataTable dt_name = GetData("SELECT * FROM Document where business='CSC'");
+                string time = DateTime.Now.ToString("yyyy-MM-dd").Replace("-", " ");
+                foreach (string fname in System.IO.Directory.GetFileSystemEntries(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼", "*.DBF").Select(Path.GetFileName))
+                {
+                    if (!fname.Contains("Wide")) { continue; }
+                    bool contains = dt_name.AsEnumerable().Any(row => fname == row.Field<String>("name"));
+                    if (!contains)
+                    {
+                        //新增一筆檔案資訊
+                        int docno = insertData(fname);
+                        //改名且讀檔
+                        if (File.Exists(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF"))
+                        {
+                            File.Delete(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF");
+                        }
+                        System.IO.File.Move(Path.Combine(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\", fname), @"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF");
+                        //利用Oledb讀取DBF資料庫
+                        string databaseDirectory = @"C:\Users\1907011\Desktop\ORC\ORC\中鋼\";
+                        string database = "test.DBF";
+                        string sql = "select * from " + database;
+                        DataTable dt_dbf = GetOleDbDbfDataTable(databaseDirectory, sql);
+                        //改回原本的名字
+                        System.IO.File.Move(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF", Path.Combine(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\", fname));
+                        //匯入datatable資訊到DB
+                        foreach (DataRow dr in dt_dbf.Rows)
+                        {
+                            if (dr["Time"].ToString().Substring(dr["Time"].ToString().Length - 2) != "00") { continue; }
+                            orc.docno = docno.ToString();
+                            orc.Date = dr["Date"].ToString().Substring(0, 9).Replace("?", "").Trim();
+                            orc.Time = dr["Time"].ToString();
+                            orc.Millitm = dr["Millitm"].ToString();
+                            orc.Marker = dr["Marker"].ToString();
+                            orc.FM101 = dr["FM101"].ToString();
+                            orc.HZ = dr["HZ"].ToString();
+                            orc.I = dr["I"].ToString();
+                            orc.KWH = dr["KWH"].ToString();
+                            orc.LT101 = dr["LT101"].ToString();
+                            orc.NET_P = dr["NET_P"].ToString();
+                            orc.PDT101 = dr["PDT101"].ToString();
+                            orc.PDT102 = dr["PDT102"].ToString();
+                            orc.PDT103 = dr["PDT103"].ToString();
+                            orc.PF = dr["PF"].ToString();
+                            orc.PSUM = dr["PSUM"].ToString();
+                            orc.PT101A = dr["PT101A"].ToString();
+                            if (dt_dbf.Columns.Contains("PT101B")) { orc.PT101B = dr["PT101B"].ToString(); }
+                            orc.PT102 = dr["PT102"].ToString();
+                            orc.PT103 = dr["PT103"].ToString();
+                            orc.PT104 = dr["PT104"].ToString();
+                            orc.PT105 = dr["PT105"].ToString();
+                            orc.PT106 = dr["PT106"].ToString();
+                            orc.PT107 = dr["PT107"].ToString();
+                            orc.PT108 = dr["PT108"].ToString();
+                            orc.PT109 = dr["PT109"].ToString();
+                            orc.ST101 = dr["ST101"].ToString();
+                            orc.ST102 = dr["ST102"].ToString();
+                            orc.SYS_H = dr["SYS_H"].ToString();
+                            orc.SYS_M = dr["SYS_M"].ToString();
+                            orc.TT101A = dr["TT101A"].ToString();
+                            if (dt_dbf.Columns.Contains("TT101B")) { orc.TT101B = dr["TT101B"].ToString(); }
+                            orc.TT102 = dr["TT102"].ToString();
+                            orc.TT103 = dr["TT103"].ToString();
+                            orc.TT104 = dr["TT104"].ToString();
+                            orc.TT105 = dr["TT105"].ToString();
+                            orc.TT106 = dr["TT106"].ToString();
+                            orc.TT107 = dr["TT107"].ToString();
+                            orc.TT108 = dr["TT108"].ToString();
+                            orc.TT109 = dr["TT109"].ToString();
+                            orc.TT110 = dr["TT110"].ToString();
+                            orc.TT111 = dr["TT111"].ToString();
+                            orc.TT112 = dr["TT112"].ToString();
+                            orc.TT113 = dr["TT113"].ToString();
+                            orc.V = dr["V"].ToString();
+                            orc.VFD_C = dr["VFD_C"].ToString();
+                            orc.Z_TTC01 = dr["Z_TTC01"].ToString();
+                            orc.OilFilter = (Math.Round(Convert.ToDouble(dr["PT108"].ToString()) - Convert.ToDouble(dr["PT109"].ToString()), 2)).ToString();
+                            if (dt_dbf.Columns.Contains("VFD_P")) { orc.VFD_P = dr["VFD_P"].ToString(); }
+                            if (dt_dbf.Columns.Contains("Z_CW_PV")) { orc.Z_CW_PV = dr["Z_CW_PV"].ToString(); }
+                            if (dt_dbf.Columns.Contains("Z_HW_PV")) { orc.Z_HW_PV = dr["Z_HW_PV"].ToString(); }
+                            if (dt_dbf.Columns.Contains("SH")) { orc.SH = dr["SH"].ToString(); }
+                            if (dt_dbf.Columns.Contains("TARGETP")) { orc.TARGETP = dr["TARGETP"].ToString(); }
+                            insertData(orc);
+                        }
+                    }
+                    //已匯入當天部分資料且當天的資料須即時匯入
+                    if (fname.Contains(time) && contains)
+                    {
+                        //抓取當天檔案的序號
+                        DataTable dt_docno = GetData(@"SELECT docno FROM Document where name like '%" + time + "%' and business='CSC'");
+                        DataTable dt_today = GetData(@"select oTime from parameter_CSC where docno =" + dt_docno.Rows[0][0].ToString());
+                        //改名且讀檔
+                        if (File.Exists(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF"))
+                        {
+                            File.Delete(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF");
+                        }
+                        System.IO.File.Move(Path.Combine(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\", fname), @"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF");
+                        //利用Oledb讀取DBF資料庫
+                        string databaseDirectory = @"C:\Users\1907011\Desktop\ORC\ORC\中鋼\";
+                        string database = "test.DBF";
+                        string sql = "select * from " + database;
+                        DataTable dt_dbf = GetOleDbDbfDataTable(databaseDirectory, sql);
+                        //改回原本的名字
+                        System.IO.File.Move(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\test.DBF", Path.Combine(@"C:\Users\1907011\Desktop\ORC\ORC\中鋼\", fname));
+                        //匯入datatable資訊到DB
+                        foreach (DataRow dr in dt_dbf.Rows)
+                        {
+                            if (dr["Time"].ToString().Substring(dr["Time"].ToString().Length - 2) != "00") { continue; }
+                            //如果資料庫內有當天此時段的資料不再重複匯入
+                            bool contain = dt_today.AsEnumerable().Any(row => dr["Time"].ToString() == row.Field<String>("oTime"));
+                            if (contain) { continue; }
+                            orc.docno = dt_docno.Rows[0][0].ToString();
+                            orc.Date = dr["Date"].ToString().Substring(0, 9).Replace("?", "").Trim();
+                            orc.Time = dr["Time"].ToString();
+                            orc.Millitm = dr["Millitm"].ToString();
+                            orc.Marker = dr["Marker"].ToString();
+                            orc.FM101 = dr["FM101"].ToString();
+                            orc.HZ = dr["HZ"].ToString();
+                            orc.I = dr["I"].ToString();
+                            orc.KWH = dr["KWH"].ToString();
+                            orc.LT101 = dr["LT101"].ToString();
+                            orc.NET_P = dr["NET_P"].ToString();
+                            orc.PDT101 = dr["PDT101"].ToString();
+                            orc.PDT102 = dr["PDT102"].ToString();
+                            orc.PDT103 = dr["PDT103"].ToString();
+                            orc.PF = dr["PF"].ToString();
+                            orc.PSUM = dr["PSUM"].ToString();
+                            orc.PT101A = dr["PT101A"].ToString();
+                            if (dt_dbf.Columns.Contains("PT101B")) { orc.PT101B = dr["PT101B"].ToString(); }
+                            orc.PT102 = dr["PT102"].ToString();
+                            orc.PT103 = dr["PT103"].ToString();
+                            orc.PT104 = dr["PT104"].ToString();
+                            orc.PT105 = dr["PT105"].ToString();
+                            orc.PT106 = dr["PT106"].ToString();
+                            orc.PT107 = dr["PT107"].ToString();
+                            orc.PT108 = dr["PT108"].ToString();
+                            orc.PT109 = dr["PT109"].ToString();
+                            orc.ST101 = dr["ST101"].ToString();
+                            orc.ST102 = dr["ST102"].ToString();
+                            orc.SYS_H = dr["SYS_H"].ToString();
+                            orc.SYS_M = dr["SYS_M"].ToString();
+                            orc.TT101A = dr["TT101A"].ToString();
+                            if (dt_dbf.Columns.Contains("TT101B")) { orc.TT101B = dr["TT101B"].ToString(); }
+                            orc.TT102 = dr["TT102"].ToString();
+                            orc.TT103 = dr["TT103"].ToString();
+                            orc.TT104 = dr["TT104"].ToString();
+                            orc.TT105 = dr["TT105"].ToString();
+                            orc.TT106 = dr["TT106"].ToString();
+                            orc.TT107 = dr["TT107"].ToString();
+                            orc.TT108 = dr["TT108"].ToString();
+                            orc.TT109 = dr["TT109"].ToString();
+                            orc.TT110 = dr["TT110"].ToString();
+                            orc.TT111 = dr["TT111"].ToString();
+                            orc.TT112 = dr["TT112"].ToString();
+                            orc.TT113 = dr["TT113"].ToString();
+                            orc.V = dr["V"].ToString();
+                            orc.VFD_C = dr["VFD_C"].ToString();
+                            orc.Z_TTC01 = dr["Z_TTC01"].ToString();
+                            orc.OilFilter = (Math.Round(Convert.ToDouble(dr["PT108"].ToString()) - Convert.ToDouble(dr["PT109"].ToString()), 2)).ToString();
+                            if (dt_dbf.Columns.Contains("VFD_P")) { orc.VFD_P = dr["VFD_P"].ToString(); }
+                            if (dt_dbf.Columns.Contains("Z_CW_PV")) { orc.Z_CW_PV = dr["Z_CW_PV"].ToString(); }
+                            orc.Z_HW_PV = dr["Z_HW_PV"].ToString();
+                            if (dt_dbf.Columns.Contains("SH")) { orc.SH = dr["SH"].ToString(); }
+                            orc.TARGETP = dr["TARGETP"].ToString();
+                            insertData(orc);
+                        }
+                    }
+                }
+                updateData(@"update parameter_CSC set oDate=replace(oDate,'?','')");
+                Thread.Sleep(900000);
+            }
+        }
+        public static DataTable GetData(string sql)
+        {
+            //連接字串
+            String conString = System.Configuration.ConfigurationManager.AppSettings["ConnString"];
+            //取得MySQLConnection
+            MySqlConnection conn = new MySqlConnection();
+
+            conn.ConnectionString = conString;
+
+            DataTable dt = new DataTable();
+            MySqlDataAdapter adapter = new MySqlDataAdapter(sql, conn);
+            adapter.Fill(dt);
+            return dt;
+        }
+        public static int insertData(string name)
+        {
+            string connString = System.Configuration.ConfigurationManager.AppSettings["ConnString"];
+            MySqlConnection conn = new MySqlConnection(connString);
+            conn.Open();
+            MySqlCommand comm = conn.CreateCommand();
+            comm.CommandText = "INSERT INTO Document(name,cdate,business) VALUES(@name, NOW(),'CSC'); SELECT LAST_INSERT_ID();";
+            comm.Parameters.AddWithValue("@name", name);
+            int id = Convert.ToInt32(comm.ExecuteScalar());
+            conn.Close();
+            return id;
+        }
+        public static void insertData(orc_model orc)
+        {
+            string connString = System.Configuration.ConfigurationManager.AppSettings["ConnString"];
+            MySqlConnection conn = new MySqlConnection(connString);
+            conn.Open();
+            MySqlCommand comm = conn.CreateCommand();
+            comm.CommandText =
+                @"INSERT INTO parameter_CSC(docno,cdate,oDate,oTime,Millitm,Marker,FM101,HZ,I,KWH,LT101,NET_P,PDT101,PDT102,PDT103,PF,PSUM,PT101A,
+                  PT101B,PT102,PT103,PT104,PT105,PT106,PT107,PT108,PT109,ST101,ST102,SYS_H,SYS_M,TT101A,TT101B,TT102,TT103,TT104,TT105,TT106,TT107,TT108,
+                  TT109,TT110,TT111,TT112,TT113,V,VFD_C,VFD_P,Z_CW_PV,Z_HW_PV,SH,TARGETP,Z_TTC01,OilFilter) 
+                  VALUES(@docno,NOW(),@oDate,@oTime,@Millitm,@Marker,@FM101,@HZ,@I,@KWH,@LT101,@NET_P,@PDT101,@PDT102,@PDT103,@PF,@PSUM,@PT101A,
+                  @PT101B,@PT102,@PT103,@PT104,@PT105,@PT106,@PT107,@PT108,@PT109,@ST101,@ST102,@SYS_H,@SYS_M,@TT101A,@TT101B,@TT102,@TT103,@TT104,@TT105,@TT106,
+                  @TT107,@TT108,@TT109,@TT110,@TT111,@TT112,@TT113,@V,@VFD_C,@VFD_P,@Z_CW_PV,@Z_HW_PV,@SH,@TARGETP,@Z_TTC01,@OilFilter)";
+            comm.Parameters.AddWithValue("@docno", string.IsNullOrEmpty(orc.docno) ? "" : orc.docno);
+            comm.Parameters.AddWithValue("@oDate", string.IsNullOrEmpty(orc.Date) ? "" : orc.Date);
+            comm.Parameters.AddWithValue("@oTime", string.IsNullOrEmpty(orc.Time) ? "" : orc.Time);
+            comm.Parameters.AddWithValue("@Millitm", string.IsNullOrEmpty(orc.Millitm) ? "" : orc.Millitm);
+            comm.Parameters.AddWithValue("@Marker", string.IsNullOrEmpty(orc.Marker) ? "" : orc.Marker);
+            comm.Parameters.AddWithValue("@FM101", string.IsNullOrEmpty(orc.FM101) ? "" : orc.FM101);
+            comm.Parameters.AddWithValue("@HZ", string.IsNullOrEmpty(orc.HZ) ? "" : orc.HZ);
+            comm.Parameters.AddWithValue("@I", string.IsNullOrEmpty(orc.I) ? "" : orc.I);
+            comm.Parameters.AddWithValue("@KWH", string.IsNullOrEmpty(orc.KWH) ? "" : orc.KWH);
+            comm.Parameters.AddWithValue("@LT101", string.IsNullOrEmpty(orc.LT101) ? "" : orc.LT101);
+            comm.Parameters.AddWithValue("@NET_P", string.IsNullOrEmpty(orc.NET_P) ? "" : orc.NET_P);
+            comm.Parameters.AddWithValue("@PDT101", string.IsNullOrEmpty(orc.PDT101) ? "" : orc.PDT101);
+            comm.Parameters.AddWithValue("@PDT102", string.IsNullOrEmpty(orc.PDT102) ? "" : orc.PDT102);
+            comm.Parameters.AddWithValue("@PDT103", string.IsNullOrEmpty(orc.PDT103) ? "" : orc.PDT103);
+            comm.Parameters.AddWithValue("@PF", string.IsNullOrEmpty(orc.PF) ? "" : orc.PF);
+            comm.Parameters.AddWithValue("@PSUM", string.IsNullOrEmpty(orc.PSUM) ? "" : orc.PSUM);
+            comm.Parameters.AddWithValue("@PT101A", string.IsNullOrEmpty(orc.PT101A) ? "" : orc.PT101A);
+            comm.Parameters.AddWithValue("@PT101B", orc.PT101B);
+            comm.Parameters.AddWithValue("@PT102", string.IsNullOrEmpty(orc.PT102) ? "" : orc.PT102);
+            comm.Parameters.AddWithValue("@PT103", string.IsNullOrEmpty(orc.PT103) ? "" : orc.PT103);
+            comm.Parameters.AddWithValue("@PT104", string.IsNullOrEmpty(orc.PT104) ? "" : orc.PT104);
+            comm.Parameters.AddWithValue("@PT105", string.IsNullOrEmpty(orc.PT105) ? "" : orc.PT105);
+            comm.Parameters.AddWithValue("@PT106", string.IsNullOrEmpty(orc.PT106) ? "" : orc.PT106);
+            comm.Parameters.AddWithValue("@PT107", string.IsNullOrEmpty(orc.PT107) ? "" : orc.PT107);
+            comm.Parameters.AddWithValue("@PT108", string.IsNullOrEmpty(orc.PT108) ? "" : orc.PT108);
+            comm.Parameters.AddWithValue("@PT109", string.IsNullOrEmpty(orc.PT109) ? "" : orc.PT109);
+            comm.Parameters.AddWithValue("@ST101", string.IsNullOrEmpty(orc.ST101) ? "" : orc.ST101);
+            comm.Parameters.AddWithValue("@ST102", string.IsNullOrEmpty(orc.ST102) ? "" : orc.ST102);
+            comm.Parameters.AddWithValue("@SYS_H", string.IsNullOrEmpty(orc.SYS_H) ? "" : orc.SYS_H);
+            comm.Parameters.AddWithValue("@SYS_M", string.IsNullOrEmpty(orc.SYS_M) ? "" : orc.SYS_M);
+            comm.Parameters.AddWithValue("@TT101A", string.IsNullOrEmpty(orc.TT101A) ? "" : orc.TT101A);
+            comm.Parameters.AddWithValue("@TT101B", orc.TT101B);
+            comm.Parameters.AddWithValue("@TT102", string.IsNullOrEmpty(orc.TT102) ? "" : orc.TT102);
+            comm.Parameters.AddWithValue("@TT103", string.IsNullOrEmpty(orc.TT103) ? "" : orc.TT103);
+            comm.Parameters.AddWithValue("@TT104", string.IsNullOrEmpty(orc.TT104) ? "" : orc.TT104);
+            comm.Parameters.AddWithValue("@TT105", string.IsNullOrEmpty(orc.TT105) ? "" : orc.TT105);
+            comm.Parameters.AddWithValue("@TT106", string.IsNullOrEmpty(orc.TT106) ? "" : orc.TT106);
+            comm.Parameters.AddWithValue("@TT107", string.IsNullOrEmpty(orc.TT107) ? "" : orc.TT107);
+            comm.Parameters.AddWithValue("@TT108", string.IsNullOrEmpty(orc.TT108) ? "" : orc.TT108);
+            comm.Parameters.AddWithValue("@TT109", string.IsNullOrEmpty(orc.TT109) ? "" : orc.TT109);
+            comm.Parameters.AddWithValue("@TT110", string.IsNullOrEmpty(orc.TT110) ? "" : orc.TT110);
+            comm.Parameters.AddWithValue("@TT111", string.IsNullOrEmpty(orc.TT111) ? "" : orc.TT111);
+            comm.Parameters.AddWithValue("@TT112", string.IsNullOrEmpty(orc.TT112) ? "" : orc.TT112);
+            comm.Parameters.AddWithValue("@TT113", string.IsNullOrEmpty(orc.TT113) ? "" : orc.TT113);
+            comm.Parameters.AddWithValue("@V", string.IsNullOrEmpty(orc.V) ? "" : orc.V);
+            comm.Parameters.AddWithValue("@VFD_C", string.IsNullOrEmpty(orc.VFD_C) ? "" : orc.VFD_C);
+            comm.Parameters.AddWithValue("@VFD_P", orc.VFD_P);
+            comm.Parameters.AddWithValue("@Z_CW_PV", orc.Z_CW_PV);
+            comm.Parameters.AddWithValue("@Z_HW_PV", orc.Z_HW_PV);
+            comm.Parameters.AddWithValue("@SH", orc.SH);
+            comm.Parameters.AddWithValue("@TARGETP", orc.TARGETP);
+            comm.Parameters.AddWithValue("@Z_TTC01", orc.Z_TTC01);
+            comm.Parameters.AddWithValue("@OilFilter", orc.OilFilter);
+
+            comm.ExecuteNonQuery();
+            conn.Close();
+        }
+        public static void updateData(string sql)
+        {
+            string connString = System.Configuration.ConfigurationManager.AppSettings["ConnString"];
+            MySqlConnection conn = new MySqlConnection(connString);
+            conn.Open();
+            MySqlCommand comm = conn.CreateCommand();
+            comm.CommandText = sql;
+
+            comm.ExecuteNonQuery();
+            conn.Close();
+        }
+        // 利用Oledb讀取DBF資料庫
+        public static OleDbConnection OleDbDbfOpenConn(string DatabaseDirectory)
+        {
+            string cnstr = string.Format("Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" + DatabaseDirectory + "; Extended Properties=dBASE IV; User ID=Admin; Password=;");
+            OleDbConnection icn = new OleDbConnection();
+            icn.ConnectionString = cnstr;
+            if (icn.State == ConnectionState.Open) icn.Close();
+            icn.Open();
+            return icn;
+        }
+
+        public static DataTable GetOleDbDbfDataTable(string DatabaseDirectory, string OleDbString)
+        {
+            DataTable myDataTable = new DataTable();
+            OleDbConnection icn = OleDbDbfOpenConn(DatabaseDirectory);
+            OleDbDataAdapter da = new OleDbDataAdapter(OleDbString, icn);
+            DataSet ds = new DataSet();
+            ds.Clear();
+            da.Fill(ds);
+            myDataTable = ds.Tables[0];
+            if (icn.State == ConnectionState.Open) icn.Close();
+            return myDataTable;
+        }
+    }
+}
