@@ -1,0 +1,149 @@
+import os
+from PIL import Image
+#矩陣運算庫
+import numpy as np
+import tensorflow as tf
+
+
+
+# 訓練還是測試
+train = False
+if train:
+    # 資料檔案夾
+    data_dir = "data"
+else:
+    # 資料檔案夾
+    data_dir = "test_data"
+# 模型檔路徑
+model_path = "model/image_model"
+
+
+# 從資料夾讀取圖片和標籤到numpy陣列中
+# 標籤資訊在檔案名中，例如1_40.jpg表示該圖片的標籤為1
+def read_data(data_dir):
+    datas = []
+    labels = []
+    fpaths = []
+    for fname in os.listdir(data_dir):
+        fpath = os.path.join(data_dir, fname)
+        fpaths.append(fpath)
+        img = Image.open(fpath)
+        img = img.convert("L")
+        image = img.resize(((int(img.size[0]*0.3), int(img.size[1]*0.3))), Image.ANTIALIAS)
+        last_axis = -1
+        image = np.expand_dims(image, last_axis)
+        data = np.array(image) / 255.0
+        label = int(fname.split("_")[0])
+        datas.append(data)
+        labels.append(label)
+ 
+    datas = np.array(datas)
+    labels = np.array(labels)
+ 
+    print("shape of datas: {}\tshape of labels: {}".format(datas.shape, 
+labels.shape))
+    return fpaths, datas, labels
+ 
+ 
+fpaths, datas, labels = read_data(data_dir)
+ 
+# 計算有多少類圖片
+num_classes = len(set(labels))
+
+# 定義Placeholder，存放input和label
+datas_placeholder = tf.placeholder(tf.float32, [None, 102, 127, 1])
+labels_placeholder = tf.placeholder(tf.int32, [None])
+ 
+# 存放DropOut參數的容器，訓練時為0.25，測試時為0
+dropout_placeholdr = tf.placeholder(tf.float32)
+
+# 定義卷積層, 20個卷積核, 卷積核大小為5，用Relu啟動
+conv0 = tf.layers.conv2d(datas_placeholder, 20, 5, activation=tf.nn.relu)
+# 定義max-pooling層，pooling窗口為2x2，步長為2x2
+pool0 = tf.layers.max_pooling2d(conv0, [2, 2], [2, 2])
+ 
+# 定義卷積層, 40個卷積核, 卷積核大小為4，用Relu啟動
+conv1 = tf.layers.conv2d(pool0, 40, 4, activation=tf.nn.relu)
+# 定義max-pooling層，pooling窗口為2x2，步長為2x2
+pool1 = tf.layers.max_pooling2d(conv1, [2, 2], [2, 2])
+
+
+# 將3維特徵轉換為1維向量
+flatten = tf.layers.flatten(pool1)
+ 
+# 全連接層，轉換為長度為100的特徵向量
+fc = tf.layers.dense(flatten, 400, activation=tf.nn.relu)
+ 
+# 加上DropOut，防止過擬合
+dropout_fc = tf.layers.dropout(fc, dropout_placeholdr)
+ 
+# 未啟動的輸出層
+logits = tf.layers.dense(dropout_fc, num_classes)
+ 
+predicted_labels = tf.arg_max(logits, 1)
+
+
+# 利用交叉熵定義損失
+losses = tf.nn.softmax_cross_entropy_with_logits(
+    labels=tf.one_hot(labels_placeholder, num_classes),
+    logits=logits
+)
+# 平均損失
+mean_loss = tf.reduce_mean(losses)
+ 
+# 定義優化器，指定要優化的損失函數
+optimizer = tf.train.AdamOptimizer(learning_rate=0.001).minimize(losses)
+
+# 用於保存和載入模型
+saver = tf.train.Saver()
+
+with tf.Session() as sess:
+    if train:
+       print("訓練模式")
+       # 如果是訓練，初始化參數
+       sess.run(tf.global_variables_initializer())
+       # 定義輸入和Label以填充容器，訓練時dropout為0.25
+       train_feed_dict = {
+           datas_placeholder: datas,
+           labels_placeholder: labels,
+           dropout_placeholdr: 0.25
+       }
+       for step in range(1000):
+           _, mean_loss_val = sess.run([optimizer, mean_loss], 
+feed_dict=train_feed_dict)
+           if step % 10 == 0:
+               print("step = {}\tmean loss = {}".format(step, 
+mean_loss_val))
+       saver.save(sess, model_path)
+       print("訓練結束，保存模型到{}".format(model_path))
+    else:
+        print("測試模式")
+        # 如果是測試，載入參數
+        saver.restore(sess, model_path)
+        print("從{}載入模型".format(model_path))
+        # label和名稱的對照關係
+        label_name_dict = {
+            0: "正常",
+            1: "8偏心",
+            2: "H偏心",
+            3: "T偏心",
+            4: "不平衡",
+        }
+        # 定義輸入和Label以填充容器，測試時dropout為0
+        test_feed_dict = {
+            datas_placeholder: datas,
+            labels_placeholder: labels,
+            dropout_placeholdr: 0
+        }
+        predicted_labels_val = sess.run(predicted_labels, 
+    feed_dict=test_feed_dict)
+        # 真實label與模型預測label
+        for fpath, real_label, predicted_label in zip(fpaths, labels, 
+    predicted_labels_val):
+            # 將label id轉換為label名
+            real_label_name = label_name_dict[real_label]
+            predicted_label_name = label_name_dict[predicted_label]
+            print("{}\t{} => {}".format(fpath, real_label_name, 
+    predicted_label_name))
+
+
