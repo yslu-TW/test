@@ -1,0 +1,200 @@
+using System;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Data;
+using System.Data.OleDb;
+using System.IO;
+using System.Text.RegularExpressions;
+using Newtonsoft.Json;
+using System.Threading;
+using Websocket.Client;
+using Serilog;
+using WebSocketSharp;
+namespace PostGeoDBF
+{
+    class Program
+    {
+        static root root = new root();
+        static root2 root2 = new root2();
+        static content content = new content();
+        static datameta datameta = new datameta();
+        static void Main(string[] args)
+        {
+            string path = System.IO.File.ReadAllText("path.txt", Encoding.Default);
+            var ws = new WebSocket("ws://140.110.148.87:8080/websocket/index");
+            ws.Connect();
+            while (1 == 1)
+            {
+                //讀取本機最新一筆資料
+                string newFile = System.IO.File.ReadAllText("log.txt", Encoding.Default);
+                string DBF = "0";
+                string rows = "0";
+                string json1 = "";
+                string json2 = "";
+                if (newFile != "")
+                {
+                    int index = newFile.IndexOf(";");
+                    DBF = newFile.Substring(0, index);
+                    rows = newFile.Substring(index + 1);
+                }
+                foreach (string fname in System.IO.Directory.GetFileSystemEntries(path, "*.DBF").Select(Path.GetFileName))
+                {
+                    if (!fname.Contains("Wide")) { continue; }
+                    string filename = Regex.Replace(fname, "[^0-9]", "");
+                    if (Convert.ToInt64(filename) < Convert.ToInt64(DBF)) { continue; }
+                    //大於log表示新檔案需回傳並寫入log
+                    if (Convert.ToInt64(filename) > Convert.ToInt64(DBF))
+                    {
+                        root.type = "data-meta";
+                        datameta.order = Convert.ToInt64(filename);
+                        datameta.title = fname;
+                        root.content = datameta;
+                        json1 = JsonConvert.SerializeObject(root);
+                        rows = "0";
+                        StreamWriter sw1 = new StreamWriter("log.txt", false);
+                        sw1.WriteLine(filename + ";" + rows);
+                        sw1.Close();
+                        if (json1 != "") { Task.Run(() => ws.Send(json1)); }
+                    }
+                    //改名且讀檔
+                    if (File.Exists(path + @"\test.DBF"))
+                    {
+                        File.Delete(path + @"\test.DBF");
+                    }
+                    System.IO.File.Move(Path.Combine(path, fname), path + @"\test.DBF");
+                    //利用Oledb讀取DBF資料庫
+                    string databaseDirectory = path;
+                    string database = "test.DBF";
+                    string sql = "select * from " + database;
+                    DataTable dt_dbf = GetOleDbDbfDataTable(databaseDirectory, sql);
+                    //改回原本的名字
+                    System.IO.File.Move(path + @"\test.DBF", Path.Combine(path + @"\", fname));
+
+                    for (int i = 0; i < dt_dbf.Rows.Count; i++)
+                    {
+                        if (i <= Convert.ToInt32(rows)) { continue; }
+                        content.dbfId = Convert.ToInt64(filename);
+                        int index = dt_dbf.Rows[i]["Date"].ToString().IndexOf(" ");
+                        string sDate = dt_dbf.Rows[i]["Date"].ToString().Substring(0, index).Replace("?", "").Trim();
+                        DateTime NewDate = DateTime.ParseExact(sDate, "yyyy/M/d", null, System.Globalization.DateTimeStyles.AllowWhiteSpaces);
+                        string nDate = NewDate.ToString("yyyy/MM/dd");
+                        content.date = DeleteChineseWord(nDate)+" " + dt_dbf.Rows[i]["Time"].ToString(); ;
+                        content.millitm = Convert.ToSingle(dt_dbf.Rows[i]["Millitm"].ToString());
+                        content.fm101 = Convert.ToSingle(dt_dbf.Rows[i]["FM101"].ToString());
+                        content.hz = Convert.ToSingle(dt_dbf.Rows[i]["HZ"].ToString());
+                        content.i = Convert.ToSingle(dt_dbf.Rows[i]["I"].ToString());
+                        content.kw = Convert.ToSingle(dt_dbf.Rows[i]["KW"].ToString());
+                        content.kwh = Convert.ToSingle(dt_dbf.Rows[i]["KWH"].ToString());
+                        content.net_p = Convert.ToSingle(dt_dbf.Rows[i]["NET_P"].ToString());
+                        content.pdt101 = Convert.ToSingle(dt_dbf.Rows[i]["PDT101"].ToString());
+                        content.pdt102 = Convert.ToSingle(dt_dbf.Rows[i]["PDT102"].ToString());
+                        content.pdt103 = Convert.ToSingle(dt_dbf.Rows[i]["PDT103"].ToString());
+                        content.pf = Convert.ToSingle(dt_dbf.Rows[i]["PF"].ToString());
+                        content.psum = Convert.ToSingle(dt_dbf.Rows[i]["PSUM"].ToString());
+                        content.pt101a = Convert.ToSingle(dt_dbf.Rows[i]["PT101A"].ToString());
+                        content.pt102 = Convert.ToSingle(dt_dbf.Rows[i]["PT102"].ToString());
+                        content.pt103 = Convert.ToSingle(dt_dbf.Rows[i]["PT103"].ToString());
+                        content.pt104 = Convert.ToSingle(dt_dbf.Rows[i]["PT104"].ToString());
+                        content.pt105 = Convert.ToSingle(dt_dbf.Rows[i]["PT105"].ToString());
+                        content.pt106 = Convert.ToSingle(dt_dbf.Rows[i]["PT106"].ToString());
+                        content.pt107 = Convert.ToSingle(dt_dbf.Rows[i]["PT107"].ToString());
+                        content.st101 = Convert.ToSingle(dt_dbf.Rows[i]["ST101"].ToString());
+                        content.sys_h = Convert.ToSingle(dt_dbf.Rows[i]["SYS_H"].ToString());
+                        content.sys_m = Convert.ToSingle(dt_dbf.Rows[i]["SYS_M"].ToString());
+                        content.tt101a = Convert.ToSingle(dt_dbf.Rows[i]["TT101A"].ToString());
+                        content.tt102 = Convert.ToSingle(dt_dbf.Rows[i]["TT102"].ToString());
+                        content.tt103 = Convert.ToSingle(dt_dbf.Rows[i]["TT103"].ToString());
+                        content.tt104 = Convert.ToSingle(dt_dbf.Rows[i]["TT104"].ToString());
+                        content.tt105 = Convert.ToSingle(dt_dbf.Rows[i]["TT105"].ToString());
+                        content.tt106 = Convert.ToSingle(dt_dbf.Rows[i]["TT106"].ToString());
+                        content.tt107 = Convert.ToSingle(dt_dbf.Rows[i]["TT107"].ToString());
+                        content.tt108 = Convert.ToSingle(dt_dbf.Rows[i]["TT108"].ToString());
+                        content.tt109 = Convert.ToSingle(dt_dbf.Rows[i]["TT109"].ToString());
+                        content.tt110 = Convert.ToSingle(dt_dbf.Rows[i]["TT110"].ToString());
+                        content.tt111 = Convert.ToSingle(dt_dbf.Rows[i]["TT111"].ToString());
+                        content.v = Convert.ToSingle(dt_dbf.Rows[i]["V"].ToString());
+                        content.z_fmc01 = Convert.ToSingle(dt_dbf.Rows[i]["Z_FMC01"].ToString());
+                        content.z_fmc02 = Convert.ToSingle(dt_dbf.Rows[i]["Z_FMC02"].ToString());
+                        content.z_fmc03 = Convert.ToSingle(dt_dbf.Rows[i]["Z_FMC03"].ToString());
+                        content.z_psum1 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PSUM1"].ToString());
+                        content.z_psum2 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PSUM2"].ToString());
+                        content.z_ptc01 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PTC01"].ToString());
+                        content.z_ptc02 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PTC02"].ToString());
+                        content.z_ptc03 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PTC03"].ToString());
+                        content.z_ptc04 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PTC07"].ToString());
+                        content.z_ptc07 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PTC07"].ToString());
+                        content.z_ptc08 = Convert.ToSingle(dt_dbf.Rows[i]["Z_PTC08"].ToString());
+                        content.z_ttc01 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC01"].ToString());
+                        content.z_ttc02 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC02"].ToString());
+                        content.z_ttc03 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC03"].ToString());
+                        content.z_ttc04 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC04"].ToString());
+                        content.z_ttc05 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC05"].ToString());
+                        content.z_ttc06 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC06"].ToString());
+                        content.z_ttc07 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC07"].ToString());
+                        content.z_ttc08 = Convert.ToSingle(dt_dbf.Rows[i]["Z_TTC08"].ToString());
+                        content.z_pm1_a = Convert.ToSingle(dt_dbf.Rows[i]["Z_PM1_A"].ToString());
+                        content.z_pm1_kwh = Convert.ToSingle(dt_dbf.Rows[i]["Z_PM1_KWH"].ToString());
+                        content.z_pm2_a = Convert.ToSingle(dt_dbf.Rows[i]["Z_PM2_A"].ToString());
+                        content.z_pm2_kwh = Convert.ToSingle(dt_dbf.Rows[i]["Z_PM2_KWH"].ToString());
+                        content.vs101 = Convert.ToSingle(dt_dbf.Rows[i]["VS101"].ToString());
+                        content.z_fcv_c = Convert.ToSingle(dt_dbf.Rows[i]["Z_FCV_C"].ToString());
+                        if (dt_dbf.Columns.Contains("Z_FMC04")) { content.z_fmc04 = Convert.ToSingle(dt_dbf.Rows[i]["Z_FMC04"].ToString()); }
+
+                        root2.type = "sensor";
+                        root2.content = content;
+                        json2 = JsonConvert.SerializeObject(root2);
+                        rows = i.ToString();
+                        //每傳回一筆寫一次log
+                        StreamWriter sw = new StreamWriter("log.txt", false);
+                        sw.WriteLine(filename + ";" + rows);
+                        sw.Close();
+                        if (json2 != "") { Task.Run(() => ws.Send(json2)); }
+                    }
+                }
+
+                Thread.Sleep(20000);
+            }
+        }
+        // 利用Oledb讀取DBF資料庫
+        public static OleDbConnection OleDbDbfOpenConn(string DatabaseDirectory)
+        {
+            string cnstr = string.Format("Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" + DatabaseDirectory + "; Extended Properties=dBASE IV; User ID=Admin; Password=;");
+            OleDbConnection icn = new OleDbConnection();
+            icn.ConnectionString = cnstr;
+            if (icn.State == ConnectionState.Open) icn.Close();
+            icn.Open();
+            return icn;
+        }
+        public static DataTable GetOleDbDbfDataTable(string DatabaseDirectory, string OleDbString)
+        {
+            DataTable myDataTable = new DataTable();
+            OleDbConnection icn = OleDbDbfOpenConn(DatabaseDirectory);
+            OleDbDataAdapter da = new OleDbDataAdapter(OleDbString, icn);
+            DataSet ds = new DataSet();
+            ds.Clear();
+            da.Fill(ds);
+            myDataTable = ds.Tables[0];
+            if (icn.State == ConnectionState.Open) icn.Close();
+            return myDataTable;
+        }
+        public static string DeleteChineseWord(string str)
+        {
+            string retValue = str;
+            if (System.Text.RegularExpressions.Regex.IsMatch(str, @"[\u4e00 - \u9fa5]"))
+            {
+                retValue = string.Empty;
+                var strsStrings = str.ToCharArray();
+                for (int index = 0; index < strsStrings.Length; index++)
+                {
+                    if (strsStrings[index] >= 0x4e00 && strsStrings[index] <= 0x9fa5)
+                    {
+                        continue;
+                    }
+                    retValue += strsStrings[index];
+                }
+            }
+            return retValue;
+        }
+    }
+}
