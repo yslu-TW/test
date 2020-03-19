@@ -1,0 +1,155 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Data;
+using MySql.Data.MySqlClient;
+using Microsoft.ML;
+using System.CodeDom;
+using System.CodeDom.Compiler;
+using System.Xml.Serialization;
+using System.Net;
+using System.IO;
+using System.Reflection;
+using System.Web.Services.Description;
+
+namespace SendIidChangeMail
+{
+    class Program
+    {
+        static string end = DateTime.Now.ToString("yyyy-MM-dd hh:00:00");
+        const int _docsize = 36;
+        static void Main(string[] args)
+        {
+            var data = new List<geohour_model>();
+            string msg = "";
+            string colume = "";
+            DataTable dt = GetData(@"SELECT date,net_p,Z_FMC04,Z_TTC07,Z_PTC07 FROM geothermal.hour_average  order by id desc limit 168");
+            for (int i = dt.Rows.Count - 1; i >= 0; i--)
+            {
+                data.Add(new geohour_model { date = dt.Rows[i]["date"].ToString(), Z_FMC04 = Convert.ToSingle(dt.Rows[i]["Z_FMC04"].ToString()), Z_TTC07 = Convert.ToSingle(dt.Rows[i]["Z_TTC07"].ToString()), Z_PTC07 = Convert.ToSingle(dt.Rows[i]["Z_PTC07"].ToString()) });
+            }
+            MLContext mlContext = new MLContext();
+            var mlData = mlContext.Data.LoadFromEnumerable(data);
+            colume = nameof(geohour_model.net_p);
+            msg += DetectChangepoint(mlContext, _docsize, mlData, colume);
+            colume = nameof(geohour_model.Z_FMC04);
+            msg += DetectChangepoint(mlContext, _docsize, mlData, colume);
+            colume = nameof(geohour_model.Z_TTC07);
+            msg += DetectChangepoint(mlContext, _docsize, mlData, colume);
+            colume = nameof(geohour_model.Z_PTC07);
+            msg += DetectChangepoint(mlContext, _docsize, mlData, colume);
+            if(msg!="")
+            {
+                msg = msg.Replace("net_p", "ORC瞬時淨發電量");
+                msg = msg.Replace("Z_FMC04", "地熱水流量(溢流)");
+                msg = msg.Replace("Z_TTC07", "井頭溫度");
+                msg = msg.Replace("Z_PTC07", "井頭壓力");
+                sendMail(msg);
+            }
+        }
+        static IDataView CreateEmptyDataView(MLContext mlContext)
+        {
+            // Create empty DataView. We just need the schema to call Fit() for the time series transforms
+            IEnumerable<geohour_model> enumerableData = new List<geohour_model>();
+            return mlContext.Data.LoadFromEnumerable(enumerableData);
+        }
+        protected static string DetectChangepoint(MLContext mlContext, int docSize, IDataView productSales, string colume)
+        {
+            var iidChangePointEstimator = mlContext.Transforms.DetectIidChangePoint(outputColumnName: nameof(geodaily_modelPrediction.Prediction), inputColumnName: colume, confidence: 95, changeHistoryLength: docSize / 4);
+            ITransformer iidChangePointTransform = iidChangePointEstimator.Fit(CreateEmptyDataView(mlContext));
+            IDataView transformedData = iidChangePointTransform.Transform(productSales);
+            IEnumerable<geodaily_modelPrediction> predictions = mlContext.Data.CreateEnumerable<geodaily_modelPrediction>(transformedData, reuseRowObject: false);
+            geodaily_modelPrediction geodaily = predictions.Last();
+            if (geodaily.Prediction[0] == 1) { return colume+ "小時平均波動異常<BR>"; }
+            return "";
+        }
+
+        public static DataTable GetData(string sql)
+        {
+            //連接字串
+            String conString = System.Configuration.ConfigurationManager.AppSettings["ConnString"];
+            //取得MySQLConnection
+            MySqlConnection conn = new MySqlConnection();
+
+            conn.ConnectionString = conString;
+
+            DataTable dt = new DataTable();
+            MySqlDataAdapter adapter = new MySqlDataAdapter(sql, conn);
+            adapter.Fill(dt);
+            return dt;
+        }
+        public static void sendMail(string msg)
+        {
+            DataTable dt = GetData("select email from geothermal.account");
+            string user = "";
+            foreach (DataRow dr in dt.Rows)
+            {
+                user += dr["email"].ToString() + ",";
+            }
+            user = user.Substring(0, user.Length - 1);
+            // 1. 使用 WebClient 下載 WSDL 信息。
+            WebClient web = new WebClient();
+            Stream stream = web.OpenRead("http://XXXX.XXXX.XXX.tw/ws_rece/MailService.asmx?WSDL");
+
+            // 2. 創建和格式化 WSDL 文檔。
+            ServiceDescription description = ServiceDescription.Read(stream);
+
+            // 3. 創建客戶端代理代理類。
+            ServiceDescriptionImporter importer = new ServiceDescriptionImporter();
+
+            importer.ProtocolName = "Soap"; // 指定訪問協議。
+            importer.Style = ServiceDescriptionImportStyle.Client; // 生成客户端代理。
+            importer.CodeGenerationOptions = CodeGenerationOptions.GenerateProperties | CodeGenerationOptions.GenerateNewAsync;
+
+            importer.AddServiceDescription(description, null, null); // 添加 WSDL 文檔。
+
+            // 4. 使用 CodeDom 编译客户端代理类。
+            CodeNamespace nmspace = new CodeNamespace(); // 為代理類添加命名空間，缺省為全局空間。
+            CodeCompileUnit unit = new CodeCompileUnit();
+            unit.Namespaces.Add(nmspace);
+
+            ServiceDescriptionImportWarnings warning = importer.Import(nmspace, unit);
+            CodeDomProvider provider = CodeDomProvider.CreateProvider("CSharp");
+
+            CompilerParameters parameter = new CompilerParameters();
+            parameter.GenerateExecutable = false;
+            parameter.GenerateInMemory = true;
+            parameter.ReferencedAssemblies.Add("System.dll");
+            parameter.ReferencedAssemblies.Add("System.XML.dll");
+            parameter.ReferencedAssemblies.Add("System.Web.Services.dll");
+            parameter.ReferencedAssemblies.Add("System.Data.dll");
+
+            CompilerResults result = provider.CompileAssemblyFromDom(parameter, unit);
+
+
+            Assembly asm = result.CompiledAssembly;
+            Type t = asm.GetType("MailService"); // 如果在前面為代理類添加了命名空間，此處需要將命名空間添加到類型前面。
+
+            object o = Activator.CreateInstance(t);
+            MethodInfo method = t.GetMethod("simple_mail");
+            string strFROM = "ITRIAPMail@itri.org.tw";
+            string mailTo_str = user;
+            string[] strTO = mailTo_str.Split(',');
+            string[] strCC = "".Split(',');
+            string[] strBCC = "".Split(',');
+            string strSubject = "[重要]地熱井監診警報通知";
+            string strBody = "親愛的用戶您好:<BR><BR>" + end + "<BR>"+ msg +"建議查詢相關數值<BR>謝謝!!<BR><BR>[工研院智能地熱電廠管理系統]";
+            string line = strBody.Replace("<BR>", "\\n");
+            line = line.Replace("[", "");
+            line = line.Replace("]", "");
+            object[] tArgs = new object[6];//參數列表 
+            tArgs[0] = strFROM;
+            tArgs[1] = strTO;
+            tArgs[2] = strCC;
+            tArgs[3] = strBCC;
+            tArgs[4] = strSubject;
+            tArgs[5] = strBody;
+            
+            using (WebClient wc = new WebClient())
+            {
+                byte[] bResult = wc.DownloadData("http://140.110.xxx.xxx:8080/line/message/text?text=" + line);
+            }
+            method.Invoke(o, tArgs);
+        }
+    }
+}
