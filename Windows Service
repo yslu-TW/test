@@ -1,0 +1,84 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using System.Web.Services;
+using Newtonsoft.Json;
+using System.Data;
+using JiebaNet.Segmenter.PosSeg;
+using JiebaNet.Segmenter;
+using System.Net;
+using System.Collections.Specialized;
+
+public class WordDet
+{
+    public List<string> suggestion
+    {
+        get;
+        set;
+    }
+}
+public class Test
+{
+    public List<string> testList
+    {
+        get;
+        set;
+    }
+}
+/// <summary>
+/// Summary description for WordDetect
+/// </summary>
+[WebService(Namespace = "http://tempuri.org/")]
+[WebServiceBinding(ConformsTo = WsiProfiles.BasicProfile1_1)]
+// To allow this Web Service to be called from script, using ASP.NET AJAX, uncomment the following line. 
+// [System.Web.Script.Services.ScriptService]
+public class WordDetect : System.Web.Services.WebService
+{
+    common common = new common();
+    UploadedDocument_Model upDoc = new UploadedDocument_Model();
+    DoDBAccess doDBAccess = new DoDBAccess();
+    SentSegmenter sentSegmenter = new SentSegmenter();
+    SentSegmenter4Frame sentSegmenter4Frame = new SentSegmenter4Frame();
+    GetSqlStr getSqlStr = new GetSqlStr();
+    DataTable dt = new DataTable();
+
+
+    public WordDetect()
+    {
+
+        //Uncomment the following line if using designed components 
+        //InitializeComponent(); 
+    }
+    //Web Api
+    protected string WebApi(string text)
+    {
+        string result = "";
+        try
+        {
+            using (WebClient client = new WebClient())
+            {
+
+                byte[] response =
+                client.UploadValues(RedRabbitTool + "Information", new NameValueCollection()
+                {
+           { "info", "sentence" },
+           { "text", text },
+                });
+
+                result = System.Text.Encoding.UTF8.GetString(response);
+            }
+        }
+        catch (Exception ex)
+        {
+            //Response.Redirect(common.errorPage);
+        }
+        return result;
+    }
+
+    [WebMethod]
+    public void DetectWord(string content)
+    {
+        自然語言處理 錯別字偵測
+    }
+}
